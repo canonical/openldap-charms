@@ -20,3 +20,7 @@ description: |
   A third paragraph that explains what need the charm meets.
 
   Finally, a paragraph that describes whom the charm is useful for.
+
+provides:
+  tls-cert:
+    interface: ldap-tls

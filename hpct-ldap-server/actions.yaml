@@ -1,0 +1,6 @@
+tls-transfer:
+  description: >
+    Transfer LDAP server CA certificate to LDAP clients.
+
+    Example usage:
+    $ juju run-action ldap-server/leader tls-transfer --wait
