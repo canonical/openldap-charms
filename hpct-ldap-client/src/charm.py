@@ -33,7 +33,7 @@ class LdapClientCharm(CharmBase):
         # Standard Charm Events
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.start, self._on_start)
-        # Relations
+        # Integrations
         self.framework.observe(self.on.tls_cert_relation_changed, self._on_tls_cert_relation_changed)
         # Server Manager
         self.ldapclient_manager = LdapClient()

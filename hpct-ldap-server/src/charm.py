@@ -40,7 +40,9 @@ class LdapServerCharm(CharmBase):
         # Actions
         self.framework.observe(self.on.add_group_action, self._on_add_group_action)
         self.framework.observe(self.on.add_user_action, self._on_add_user_action)
-        self.framework.observe(self.on.tls_transfer_action, self._on_tls_transfer_action)
+        self.framework.observe(self.on.set_config_action, self._on_set_config_action)
+        # Integrations
+        self.framework.observe(self.on.tls_cert_relation_changed, self._on_tls_cert_relation_changed)
         # Server Manager
         self.ldapserver_manager = LdapServer()
 
@@ -63,15 +65,19 @@ class LdapServerCharm(CharmBase):
         logger.info("Install")
         self.ldapserver_manager.install()
 
+    def _on_set_config_action(self, event):
+        """Handle set-config action."""
+        self.ldapserver_manager.set_config(event.params["passwd"])
+
     def _on_start(self, event):
         """Handle start event."""
         self.ldapserver_manager.start()
         self.ldapserver_manager.tls_gen()
         self.unit.status = ActiveStatus("LDAP Server Started")
 
-    def _on_tls_transfer_action(self, event):
+    def _on_tls_cert_relation_changed(self, event):
         """Handle the tls-transfer action."""
-       # Get TLS relation
+        # Get TLS relation
         tls_relation = self.model.get_relation("tls-cert")
         if not tls_relation:
             self.unit.status = WaitingStatus("Waiting for ldap-tls relation to be created")

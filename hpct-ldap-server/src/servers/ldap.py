@@ -1,7 +1,7 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
-# ldap.py
+# servers/ldap.py
 
 import logging
 import subprocess
@@ -26,17 +26,23 @@ class LdapServer:
     def __init__(self):
         pass
 
-    def _add_base(self):
+    def _add_base(self, passwd):
         """Define base for groups and users."""
 
         base = [f"dn: ou=People,dc={DOMAIN}", "objectClass: organizationalUnit", 
                 "ou: People", "", f"dn: ou=Groups,dc={DOMAIN}", 
                 "objectClass: organizationalUnit", "ou: Groups"]
         
-        
         with open("/etc/ldap/basedn.ldif", "w") as f:
             for l in base:
                 f.write(f"{l}\n")
+
+        binddn = f"cn=admin,dc={DOMAIN}"
+        cmd = ["ldapadd", "-x", "-D", binddn, "-w", passwd, "-f", "/etc/ldap/basedn.ldif"]
+        
+        rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        if rc != 0:
+            raise Exception("Unable to add basedn ldif.")
 
     def add_user(self, gid=None, passwd=None, uid=None, upasswd=None, user=None):
         """Add user."""
@@ -51,7 +57,7 @@ class LdapServer:
             
             with tempfile.NamedTemporaryFile(mode="w+t", delete=True) as f:
                 for l in base_user:
-                    f.write(l)
+                    f.write(f"{l}\n")
                     f.flush()
                 cmd = ["ldapadd", "-x", "-D", binddn, "-w", passwd, "-f", f.name]
 
@@ -69,7 +75,7 @@ class LdapServer:
 
             with tempfile.NamedTemporaryFile(mode="w+t", delete=True) as f:
                 for l in base_group:
-                    f.write(l)
+                    f.write(f"{l}\n")
                     f.flush()
                 cmd = ["ldapadd", "-x", "-D", binddn, "-w", passwd, "-f", f.name]
 
@@ -135,6 +141,22 @@ class LdapServer:
         self.stop()
         self.start()
 
+    def set_config(self, passwd=None):
+        """Set LDAP password and slapd configuration."""
+
+        if passwd:
+            # Reconfigure slapd with password
+            self.tls_deb(passwd)
+            self._add_base(passwd)
+
+            # Apply Certificate LDIF
+            ldif_args = ["ldapmodify", "-Y", "EXTERNAL", "-H", "ldapi:///", "-f", "/etc/ldap/certinfo.ldif"]
+         
+            rc = subprocess.call(ldif_args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+            if rc != 0:
+                raise Exception("Unable to apply Server Certificate LDIF")
+
     def start(self):
         """Start services."""
 
@@ -147,35 +169,38 @@ class LdapServer:
         for name in self.systemd_services:
             systemd.service_stop(name)
 
-    def tls_deb(self):
+    def tls_deb(self, passwd):
         """Configuration of slapd noninteractive."""
 
-        rc = subprocess.call(["export", "DEBIAN_FRONTEND=noninteractive"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
-        if rc != 0:
-                raise Exception(f"Unable to export.")
+        # rc = subprocess.call(["export", "DEBIAN_FRONTEND=noninteractive"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
+        # if rc != 0:
+        #        raise Exception(f"Unable to export.")
 
         args = [
-            ["echo", "slapd slapd/no_configuration boolean false", "|", "debconf-set-selections"],
-            ["echo", "slapd slapd/domain string lxd", "|", "debconf-set-selections"],
-            ["echo", "slapd shared/organization string `lxd`", "|", "debconf-set-selections"],
-            ["echo", "slapd slapd/password1 string `test`", "|", "debconf-set-selections"],
-            ["echo", "slapd slapd/password1 string `test`", "|", "debconf-set-selections"],
-            ["echo", "slapd slapd/purge_database boolean true", "|", "debconf-set-selections"],
-            ["echo", "slapd slapd/move_old_database boolean true", "|", "debconf-set-selections"],
-            ["dpkg-reconfigure", "-f", "noninteractive", "slapd"]
+            "slapd slapd/no_configuration boolean false", "slapd slapd/domain string lxd",
+            "slapd shared/organization string lxd", f"slapd slapd/password1 password {passwd}",
+            f"slapd slapd/password2 password {passwd}", "slapd slapd/purge_database boolean true",
+            "slapd slapd/move_old_database boolean true"
         ]
 
-        for arg in args:
-            rc = subprocess.call(arg, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        with tempfile.NamedTemporaryFile(mode="w+t", delete=True) as f:
+            for arg in args:
+                f.write(f"{arg}\n")
+                f.flush()
+            
+            ps = subprocess.Popen(('cat', f'{f.name}'), stdout=subprocess.PIPE)
+            output = subprocess.check_output(('debconf-set-selections'), stdin=ps.stdout)
+            ps.wait()
 
-            if rc != 0:
-                raise Exception(f"Unable to run {arg[0]}")
+        rc = subprocess.call(["dpkg-reconfigure", "-f", "noninteractive", "slapd"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        if rc != 0:
+            raise Exception(f"Unable to set debconf for slapd.")
     
     def tls_gen(self):
         """Create CA cert."""
 
         # Write base ldif
-        self._add_base()
+        # self._add_base()
 
         # Create Private Key for Certificate Authority(CA)
         pkc_args = ["certtool", "--generate-privkey", "--bits", "4096", "--outfile", "/etc/ssl/private/mycakey.pem"]
@@ -252,22 +277,23 @@ class LdapServer:
                 f.write(f"{l}\n")
 
         # Apply Certificate LDIF
-        # ldif_args = ["ldapmodify", "-Y", "EXTERNAL", "-H", "ldapi:///", "-f", "/etc/ldap/certinfo.ldif"]
-        # TODO: Won't work till `dpkg-reconfigure slapd` is done
-        # rc = subprocess.call(ldif_args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
-        # if rc != 0:
-        #    raise Exception("Unable to apply Server Certificate LDIF")
-
-    def tls_load(self):
-        """Load and return CA cert and ldap uri."""# Apply Certificate LDIF
-
         ldif_args = ["ldapmodify", "-Y", "EXTERNAL", "-H", "ldapi:///", "-f", "/etc/ldap/certinfo.ldif"]
-        # Won't work till `dpkg-reconfigure slapd` is done
+        # TODO: Won't work till `dpkg-reconfigure slapd` is done
         rc = subprocess.call(ldif_args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
         if rc != 0:
-            raise Exception("Unable to apply Server Certificate LDIF. Run `sudo dpkg-reconfigure slapd` first.")
+            raise Exception("Unable to apply Server Certificate LDIF")
+
+    def tls_load(self):
+        """Load and return CA cert and ldap uri."""
+        
+        # Apply Certificate LDIF
+        # ldif_args = ["ldapmodify", "-Y", "EXTERNAL", "-H", "ldapi:///", "-f", "/etc/ldap/certinfo.ldif"]
+        # Won't work till `dpkg-reconfigure slapd` is done
+        # rc = subprocess.call(ldif_args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+        # if rc != 0:
+        #    raise Exception("Unable to apply Server Certificate LDIF. Run `sudo dpkg-reconfigure slapd` first.")
 
         # sssd conf template for clients
         ldap_uri = result = subprocess.run(["cat", "/etc/hostname"], capture_output=True, text=True)
