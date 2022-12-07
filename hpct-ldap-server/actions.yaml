@@ -1,3 +1,34 @@
+add-group:
+  description: Add LDAP group.
+  params:
+    group:
+      type: string
+      description: Group name.
+    gid:
+      type: integer
+      description: Group ID.
+    passwd:
+      type: string
+      description: LDAP Password.
+  required: [group, gid, passwd]
+add-user:
+  description: Add LDAP user.
+  params:
+    gid:
+      type: integer
+      description: Group ID.
+    passwd:
+      type: string
+      description: LDAP password.
+    uid:
+      type: integer
+      description: User ID.
+    upasswd:
+      type: string
+      description: User Password.
+    user:
+      type: string
+      description: Username.
 tls-transfer:
   description: >
     Transfer LDAP server CA certificate to LDAP clients.

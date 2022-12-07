@@ -5,12 +5,17 @@
 
 import logging
 import subprocess
+import tempfile
 
 logger = logging.getLogger(__name__)
 
 from charms.operator_libs_linux.v0 import apt
 from charms.operator_libs_linux.v1 import systemd
 from utils.filedata import FileData
+
+DOMAIN = "lxd"
+MIN_GID = 999
+MIN_UID = 999
 
 class LdapServer:
     """Server to provide LDAP server charm all functionality needed."""
@@ -20,6 +25,57 @@ class LdapServer:
 
     def __init__(self):
         pass
+
+    def _add_base(self):
+        """Define base for groups and users."""
+
+        base = [f"dn: ou=People,dc={DOMAIN}", "objectClass: organizationalUnit", 
+                "ou: People", "", f"dn: ou=Groups,dc={DOMAIN}", 
+                "objectClass: organizationalUnit", "ou: Groups"]
+        
+        
+        with open("/etc/ldap/basedn.ldif", "w") as f:
+            for l in base:
+                f.write(f"{l}\n")
+
+    def add_user(self, gid=None, passwd=None, uid=None, upasswd=None, user=None):
+        """Add user."""
+
+        if user and passwd and upasswd and uid and uid > MIN_UID and gid and gid > MIN_GID:
+            binddn = f"cn=admin,dc={DOMAIN}"
+            base_user = [f"dn: uid={user.lower()},ou=people,dc={DOMAIN}", "objectClass: inetOrgPerson",
+                          "objectClass: posixAccount", "objectClass: shadowAccount",
+                          f"cn: {user.lower()}", f"sn: {user}", f"userPassword: {upasswd}",
+                          "loginShell: /bin/bash", f"uidNumber: {uid}", f"gidNumber: {gid}",
+                          f"homeDirectory: /home/{user.lower()}"]
+            
+            with tempfile.NamedTemporaryFile(mode="w+t", delete=True) as f:
+                for l in base_user:
+                    f.write(l)
+                    f.flush()
+                cmd = ["ldapadd", "-x", "-D", binddn, "-w", passwd, "-f", f.name]
+
+                rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                if rc != 0:
+                    raise Exception("Unable to add user. Make sure to run \"ldapadd -x -D cn=admin,dc=lxd -W -f /etc/ldap/basedn.ldif\" first.")
+    
+    def add_group(self, gid=None, group=None, passwd=None):
+        """Add group."""
+
+        if group and passwd and gid and gid > MIN_GID:
+            binddn = f"cn=admin,dc={DOMAIN}"
+            base_group = [f"dn: cn={group},ou=Groups,dc={DOMAIN}", "objectClass: posixGroup",
+                          f"cn: {group}", f"gidNumber: {gid}"]
+
+            with tempfile.NamedTemporaryFile(mode="w+t", delete=True) as f:
+                for l in base_group:
+                    f.write(l)
+                    f.flush()
+                cmd = ["ldapadd", "-x", "-D", binddn, "-w", passwd, "-f", f.name]
+
+                rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                if rc != 0:
+                    raise Exception("Unable to add group. Make sure to run \"ldapadd -x -D cn=admin,dc=lxd -W -f /etc/ldap/basedn.ldif\" first.")
 
     def disable(self):
         """Disable services."""
@@ -117,6 +173,9 @@ class LdapServer:
     
     def tls_gen(self):
         """Create CA cert."""
+
+        # Write base ldif
+        self._add_base()
 
         # Create Private Key for Certificate Authority(CA)
         pkc_args = ["certtool", "--generate-privkey", "--bits", "4096", "--outfile", "/etc/ssl/private/mycakey.pem"]

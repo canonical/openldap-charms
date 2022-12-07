@@ -38,9 +38,25 @@ class LdapServerCharm(CharmBase):
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.start, self._on_start)
         # Actions
+        self.framework.observe(self.on.add_group_action, self._on_add_group_action)
+        self.framework.observe(self.on.add_user_action, self._on_add_user_action)
         self.framework.observe(self.on.tls_transfer_action, self._on_tls_transfer_action)
         # Server Manager
         self.ldapserver_manager = LdapServer()
+
+    def _on_add_group_action(self, event):
+        """Handle add-group action."""
+        if not self.unit.is_leader():
+            event.fail("The action can be run only on leader unit.")
+            return
+        self.ldapserver_manager.add_group(event.params["gid"], event.params["group"], event.params["passwd"])
+    
+    def _on_add_user_action(self, event):
+        """Handle add-user action."""
+        if not self.unit.is_leader():
+            event.fail("The action can be run only on leader unit.")
+            return
+        self.ldapserver_manager.add_user(event.params["gid"], event.params["passwd"], event.params["uid"], event.params["upasswd"], event.params["user"])
 
     def _on_install(self, event):
         """Handle install event."""
