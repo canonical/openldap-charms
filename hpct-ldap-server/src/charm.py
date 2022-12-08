@@ -53,7 +53,10 @@ class LdapServerCharm(CharmBase):
         replicas = self.model.get_relation("replicas")
         domain = replicas.data[self.app].get("domain")
         self.ldapserver_manager.add_group(
-            domain, event.params["gid"], event.params["group"], event.params["passwd"]
+            event.params["admin-passwd"],
+            domain,
+            event.params["gid"],
+            event.params["group"],
         )
 
     def _on_add_user_action(self, event):
@@ -64,11 +67,14 @@ class LdapServerCharm(CharmBase):
         replicas = self.model.get_relation("replicas")
         domain = replicas.data[self.app].get("domain")
         self.ldapserver_manager.add_user(
+            event.params["admin-passwd"],
             domain,
+            event.params["gecos"],
             event.params["gid"],
+            event.params["homedir"],
+            event.params["login"],
             event.params["passwd"],
             event.params["uid"],
-            event.params["upasswd"],
             event.params["user"],
         )
 
@@ -83,7 +89,9 @@ class LdapServerCharm(CharmBase):
             event.fail("The action can be run only on leader unit.")
             return
         self.ldapserver_manager.set_config(
-            event.params["domain"], event.params["org"], event.params["passwd"]
+            event.params["admin-passwd"],
+            event.params["domain"],
+            event.params["org"],
         )
         self.ldapserver_manager.tls_gen(event.params["org"])
         replicas = self.model.get_relation("replicas")

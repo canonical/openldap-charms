@@ -20,21 +20,22 @@ MIN_UID = 999
 
 class LdapServer:
     """Server to provide LDAP server charm all functionality needed."""
+
     packages = ["slapd", "ldap-utils", "sssd-ldap", "gnutls-bin", "ssl-cert"]
     systemd_services = ["slapd"]
 
     def __init__(self):
         pass
 
-    def _add_base(self, dcs, passwd) -> None:
+    def _add_base(self, admin_passwd, dcs) -> None:
         """Define base for groups and users.
 
         Parameters
         ----------
+        admin_passwd : str
+            LDAP password.
         dcs : str
             Domain components.
-        passwd : str
-            LDAP password.
         """
         base = [
             f"dn: ou=People,{dcs}",
@@ -51,7 +52,7 @@ class LdapServer:
                 f.write(f"{line}\n")
 
         binddn = f"cn=admin,{dcs}"
-        cmd = ["ldapadd", "-x", "-D", binddn, "-w", passwd, "-f", "/etc/ldap/basedn.ldif"]
+        cmd = ["ldapadd", "-x", "-D", binddn, "-w", admin_passwd, "-f", "/etc/ldap/basedn.ldif"]
 
         rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         if rc != 0:
@@ -78,28 +79,47 @@ class LdapServer:
             return f"dc={dc}"
 
     def add_user(
-        self, domain=None, gid=None, passwd=None, uid=None, upasswd=None, user=None
+        self,
+        admin_passwd=None,
+        domain=None,
+        gecos=None,
+        gid=None,
+        homedir=None,
+        login=None,
+        passwd=None,
+        uid=None,
+        user=None,
     ) -> None:
         """Add user.
 
         Parameters
         ----------
+        admin_passwd : str
+            LDAP password.
         domain : str
             Domain name.
+        gecos : str
+            Real name.
         gid : int
             Group id.
+        homedir : str
+            Home directory path.
+        login : str
+            Login shell.
         passwd : str
-            LDAP password.
+            User password.
         uid : int
             User id.
-        upasswd : str
-            User password.
         user : str
             Username.
         """
         dcs = self._split_domain(domain)
 
-        if None not in [dcs, gid, passwd, uid, upasswd, user] and uid > MIN_UID and gid > MIN_GID:
+        if (
+            None not in [admin_passwd, dcs, gecos, gid, homedir, login, passwd, uid, user]
+            and uid > MIN_UID
+            and gid > MIN_GID
+        ):
             binddn = f"cn=admin,{dcs}"
             base_user = [
                 f"dn: uid={user.lower()},ou=people,{dcs}",
@@ -108,18 +128,19 @@ class LdapServer:
                 "objectClass: shadowAccount",
                 f"cn: {user.lower()}",
                 f"sn: {user}",
-                f"userPassword: {upasswd}",
-                "loginShell: /bin/bash",
+                f"userPassword: {passwd}",
+                f"loginShell: {login}",
                 f"uidNumber: {uid}",
                 f"gidNumber: {gid}",
-                f"homeDirectory: /home/{user.lower()}",
+                f"homeDirectory: {homedir}",
+                f"gecos: {gecos}",
             ]
 
             with tempfile.NamedTemporaryFile(mode="w+t", delete=True) as f:
                 for line in base_user:
                     f.write(f"{line}\n")
                     f.flush()
-                cmd = ["ldapadd", "-x", "-D", binddn, "-w", passwd, "-f", f.name]
+                cmd = ["ldapadd", "-x", "-D", binddn, "-w", admin_passwd, "-f", f.name]
 
                 rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
                 if rc != 0:
@@ -127,23 +148,29 @@ class LdapServer:
                         f'Unable to add user. Make sure to run "ldapadd -x -D cn=admin,{dcs} -W -f /etc/ldap/basedn.ldif" first.'
                     )
 
-    def add_group(self, domain=None, gid=None, group=None, passwd=None) -> None:
+    def add_group(
+        self,
+        admin_passwd=None,
+        domain=None,
+        gid=None,
+        group=None,
+    ) -> None:
         """Add group.
 
         Parameters
         ----------
+        admin_passwd : str
+            LDAP password.
         domain : str
             Domain name.
         gid : int
             Group id.
         group : str
             Group name.
-        passwd : str
-            LDAP password.
         """
         dcs = self._split_domain(domain)
 
-        if None not in [domain, gid, group, passwd] and gid > MIN_GID:
+        if None not in [domain, gid, group, admin_passwd] and gid > MIN_GID:
             binddn = f"cn=admin,{dcs}"
             base_group = [
                 f"dn: cn={group},ou=Groups,{dcs}",
@@ -156,7 +183,7 @@ class LdapServer:
                 for line in base_group:
                     f.write(f"{line}\n")
                     f.flush()
-                cmd = ["ldapadd", "-x", "-D", binddn, "-w", passwd, "-f", f.name]
+                cmd = ["ldapadd", "-x", "-D", binddn, "-w", admin_passwd, "-f", f.name]
 
                 rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
                 if rc != 0:
@@ -216,24 +243,24 @@ class LdapServer:
         self.stop()
         self.start()
 
-    def set_config(self, domain=None, org=None, passwd=None) -> None:
+    def set_config(self, admin_passwd=None, domain=None, org=None) -> None:
         """Set LDAP password and slapd configuration.
 
         Parameters
         ----------
+        admin_passwd : str
+            LDAP password.
         domain : str
             Domain name.
         org : str
             Organization name.
-        passwd : str
-            LDAP password.
         """
-        if domain and org and passwd:
+        if domain and org and admin_passwd:
             dcs = self._split_domain(domain)
 
             # Reconfigure slapd with password
-            self.tls_deb(domain, org, passwd)
-            self._add_base(dcs, passwd)
+            self.tls_deb(admin_passwd, domain, org)
+            self._add_base(admin_passwd, dcs)
         else:
             raise Exception("Domain, Organization, or Password is missing cannot complete action.")
 
@@ -247,24 +274,24 @@ class LdapServer:
         for name in self.systemd_services:
             systemd.service_stop(name)
 
-    def tls_deb(self, domain, org, passwd) -> None:
+    def tls_deb(self, admin_passwd, domain, org) -> None:
         """Configuration of slapd noninteractive.
 
         Parameters
         ----------
+        admin_passwd : str
+            LDAP password.
         domain : str
             Domain name.
         org : str
             Organization name.
-        passwd : str
-            LDAP password.
         """
         args = [
             "slapd slapd/no_configuration boolean false",
             f"slapd slapd/domain string {domain}",
             f"slapd shared/organization string {org}",
-            f"slapd slapd/password1 password {passwd}",
-            f"slapd slapd/password2 password {passwd}",
+            f"slapd slapd/password1 password {admin_passwd}",
+            f"slapd slapd/password2 password {admin_passwd}",
             "slapd slapd/purge_database boolean true",
             "slapd slapd/move_old_database boolean true",
         ]
