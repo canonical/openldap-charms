@@ -32,6 +32,12 @@ add-user:
 set-config:
   description: Set LDAP admin password and LDAP configuration.
   params:
+    domain:
+      type: string
+      description: Domain Components in example.com format.
+    org:
+      type: string
+      description: Organization name.
     passwd:
       type: string
-      description: password.
+      description: Password.

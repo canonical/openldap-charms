@@ -51,14 +51,18 @@ class LdapServerCharm(CharmBase):
         if not self.unit.is_leader():
             event.fail("The action can be run only on leader unit.")
             return
-        self.ldapserver_manager.add_group(event.params["gid"], event.params["group"], event.params["passwd"])
+        replicas = self.model.get_relation("replicas")
+        domain = replicas.data[self.app].get("domain")
+        self.ldapserver_manager.add_group(domain, event.params["gid"], event.params["group"], event.params["passwd"])
     
     def _on_add_user_action(self, event):
         """Handle add-user action."""
         if not self.unit.is_leader():
             event.fail("The action can be run only on leader unit.")
             return
-        self.ldapserver_manager.add_user(event.params["gid"], event.params["passwd"], event.params["uid"], event.params["upasswd"], event.params["user"])
+        replicas = self.model.get_relation("replicas")
+        domain = replicas.data[self.app].get("domain")
+        self.ldapserver_manager.add_user(domain, event.params["gid"], event.params["passwd"], event.params["uid"], event.params["upasswd"], event.params["user"])
 
     def _on_install(self, event):
         """Handle install event."""
@@ -67,23 +71,41 @@ class LdapServerCharm(CharmBase):
 
     def _on_set_config_action(self, event):
         """Handle set-config action."""
-        self.ldapserver_manager.set_config(event.params["passwd"])
+        if not self.unit.is_leader():
+            event.fail("The action can be run only on leader unit.")
+            return
+        self.ldapserver_manager.set_config(event.params["domain"], event.params["org"], event.params["passwd"])
+        self.ldapserver_manager.tls_gen(event.params["org"])
+        replicas = self.model.get_relation("replicas")
+        replicas.data[self.app].update(
+            {
+                "domain": event.params["domain"],
+                "org": event.params["org"],
+            }
+        )
 
     def _on_start(self, event):
         """Handle start event."""
         self.ldapserver_manager.start()
-        self.ldapserver_manager.tls_gen()
         self.unit.status = ActiveStatus("LDAP Server Started")
 
     def _on_tls_cert_relation_changed(self, event):
         """Handle the tls-transfer action."""
         # Get TLS relation
         tls_relation = self.model.get_relation("tls-cert")
+        # Get Replicas relation
+        replicas = self.model.get_relation("replicas")
+        domain = replicas.data[self.app].get("domain")
         if not tls_relation:
             self.unit.status = WaitingStatus("Waiting for ldap-tls relation to be created")
             event.defer()
             return
-        ca_cert, sssd_conf = self.ldapserver_manager.tls_load()
+        if not domain:
+            logger.info(f"domain: {domain}")
+            self.unit.status = WaitingStatus("Waiting for set-config action to be run")
+            event.defer()
+            return
+        ca_cert, sssd_conf = self.ldapserver_manager.tls_load(domain)
         tls_relation.data[self.app].update(
             {
                 "ca": ca_cert,
