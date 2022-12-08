@@ -15,10 +15,7 @@ import logging
 
 from ops.charm import CharmBase
 from ops.main import main
-from ops.model import (
-    ActiveStatus,
-    WaitingStatus
-)
+from ops.model import ActiveStatus, WaitingStatus
 
 from servers.ldap import LdapClient
 
@@ -34,7 +31,9 @@ class LdapClientCharm(CharmBase):
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.start, self._on_start)
         # Integrations
-        self.framework.observe(self.on.tls_cert_relation_changed, self._on_tls_cert_relation_changed)
+        self.framework.observe(
+            self.on.tls_cert_relation_changed, self._on_tls_cert_relation_changed
+        )
         # Server Manager
         self.ldapclient_manager = LdapClient()
 

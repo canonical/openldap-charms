@@ -19,10 +19,7 @@ import logging
 
 from ops.charm import CharmBase
 from ops.main import main
-from ops.model import (
-    ActiveStatus,
-    WaitingStatus
-)
+from ops.model import ActiveStatus, WaitingStatus
 
 from servers.ldap import LdapServer
 
@@ -42,7 +39,9 @@ class LdapServerCharm(CharmBase):
         self.framework.observe(self.on.add_user_action, self._on_add_user_action)
         self.framework.observe(self.on.set_config_action, self._on_set_config_action)
         # Integrations
-        self.framework.observe(self.on.tls_cert_relation_changed, self._on_tls_cert_relation_changed)
+        self.framework.observe(
+            self.on.tls_cert_relation_changed, self._on_tls_cert_relation_changed
+        )
         # Server Manager
         self.ldapserver_manager = LdapServer()
 
@@ -53,8 +52,10 @@ class LdapServerCharm(CharmBase):
             return
         replicas = self.model.get_relation("replicas")
         domain = replicas.data[self.app].get("domain")
-        self.ldapserver_manager.add_group(domain, event.params["gid"], event.params["group"], event.params["passwd"])
-    
+        self.ldapserver_manager.add_group(
+            domain, event.params["gid"], event.params["group"], event.params["passwd"]
+        )
+
     def _on_add_user_action(self, event):
         """Handle add-user action."""
         if not self.unit.is_leader():
@@ -62,7 +63,14 @@ class LdapServerCharm(CharmBase):
             return
         replicas = self.model.get_relation("replicas")
         domain = replicas.data[self.app].get("domain")
-        self.ldapserver_manager.add_user(domain, event.params["gid"], event.params["passwd"], event.params["uid"], event.params["upasswd"], event.params["user"])
+        self.ldapserver_manager.add_user(
+            domain,
+            event.params["gid"],
+            event.params["passwd"],
+            event.params["uid"],
+            event.params["upasswd"],
+            event.params["user"],
+        )
 
     def _on_install(self, event):
         """Handle install event."""
@@ -74,7 +82,9 @@ class LdapServerCharm(CharmBase):
         if not self.unit.is_leader():
             event.fail("The action can be run only on leader unit.")
             return
-        self.ldapserver_manager.set_config(event.params["domain"], event.params["org"], event.params["passwd"])
+        self.ldapserver_manager.set_config(
+            event.params["domain"], event.params["org"], event.params["passwd"]
+        )
         self.ldapserver_manager.tls_gen(event.params["org"])
         replicas = self.model.get_relation("replicas")
         replicas.data[self.app].update(
@@ -112,6 +122,7 @@ class LdapServerCharm(CharmBase):
                 "sssd": sssd_conf,
             }
         )
+
 
 if __name__ == "__main__":  # pragma: nocover
     main(LdapServerCharm)

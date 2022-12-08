@@ -3,16 +3,17 @@
 # See LICENSE file for licensing details.
 #
 # servers/ldap.py
-
 """Server for client operator."""
-
 import logging
+
 logger = logging.getLogger(__name__)
 import subprocess
 
 from charms.operator_libs_linux.v0 import apt
 from charms.operator_libs_linux.v1 import systemd
+
 from utils.filedata import FileData
+
 
 class LdapClient:
     """Server to provide LDAP client charm all functionality needed."""
@@ -25,18 +26,16 @@ class LdapClient:
 
     def disable(self) -> None:
         """Disable services."""
-
         for name in self.systemd_services:
             systemd.service_pause(name)
 
     def enable(self) -> None:
         """Enable services."""
-
         for name in self.systemd_services:
             systemd.service_resume(name)
 
     def install(self) -> None:
-        """Install using charmlib apt"""
+        """Install using charmlib apt."""
         if self.packages:
             try:
                 apt.update()
@@ -47,7 +46,6 @@ class LdapClient:
 
     def is_enabled(self) -> bool:
         """Check enabled status of services."""
-
         if self.systemd_services:
             for name in self.systemd_services:
                 if not systemd._systemctl("is-enabled", name, quiet=True):
@@ -57,7 +55,6 @@ class LdapClient:
 
     def is_installed(self) -> bool:
         """Check packages are installed."""
-
         if self.packages:
             for name in self.packages:
                 if not self.apt.DebianPackage.from_installed_package(name).present:
@@ -67,7 +64,6 @@ class LdapClient:
 
     def is_running(self) -> bool:
         """Check running/active status of services."""
-
         if self.systemd_services:
             for name in self.systemd_services:
                 if not systemd.service_running(name):
@@ -77,43 +73,38 @@ class LdapClient:
 
     def restart(self) -> None:
         """Restart servers/services."""
-
         self.stop()
         self.start()
 
     def start(self) -> None:
         """Start services."""
-
         for name in self.systemd_services:
             systemd.service_start(name)
 
     def stop(self) -> None:
         """Stop services."""
-
         for name in self.systemd_services:
             systemd.service_stop(name)
 
     def tls_save(self, ca_cert, sssd_conf):
         """Save tls certificate and sssd conf.
 
-        Args:
-        ca_cert -- CA certificate
-        sssd_conf -- SSSD configuration file
+        Parameters
+        ----------
+        ca_cert : str
+            CA certificate.
+        sssd_conf : str
+            SSSD configuration file.
         """
-
         fd = FileData(ca_cert)
         fd.save("/usr/local/share/ca-certificates/mycacert.crt")
         fd = FileData(sssd_conf)
         fd.save("/etc/sssd/sssd.conf", mode=0o600, owner="root", group="root")
 
-        rc = subprocess.call(["update-ca-certificates"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        rc = subprocess.call(
+            ["update-ca-certificates"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
+        )
         if rc != 0:
             raise Exception("Unable to update ca certificates.")
-        rc = subprocess.call(["systemctl", "restart", "sssd"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        if rc != 0:
-            raise Exception("Unable to restart sssd service.")
 
-        # Automatic Home Directory Creation
-        rc = subprocess.call(["pam-auth-update", "--enable", "mkhomedir"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        if rc != 0:
-            raise Exception("Unable to enable automatic home directory creation.")
+        systemd.service_restart("sssd")
