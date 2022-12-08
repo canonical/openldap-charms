@@ -25,8 +25,13 @@ class LdapServer:
     def __init__(self):
         pass
 
-    def _add_base(self, dcs, passwd):
-        """Define base for groups and users."""
+    def _add_base(self, dcs, passwd) -> None:
+        """Define base for groups and users.
+
+        Args:
+        dcs -- Domain components
+        passwd -- LDAP password
+        """
 
         base = [f"dn: ou=People,{dcs}", "objectClass: organizationalUnit", 
                 "ou: People", "", f"dn: ou=Groups,{dcs}", 
@@ -43,8 +48,12 @@ class LdapServer:
         if rc != 0:
             raise Exception("Unable to add basedn ldif.")
 
-    def _split_domain(self, dc):
-        """Split domain components."""
+    def _split_domain(self, dc) -> str:
+        """Split domain components.
+
+        Args:
+        dcs -- Domain components
+        """
         if "." in dc:
             split_dc = []
             dcs = dc.split(".")
@@ -58,8 +67,17 @@ class LdapServer:
             return f"dc={dc}"
 
 
-    def add_user(self, domain=None, gid=None, passwd=None, uid=None, upasswd=None, user=None):
-        """Add user."""
+    def add_user(self, domain=None, gid=None, passwd=None, uid=None, upasswd=None, user=None) -> None:
+        """Add user.
+
+        Args:
+        domain -- Domain name
+        gid -- Group id
+        passwd -- LDAP password
+        uid -- user id
+        upasswd -- user password
+        user -- username
+        """
 
         dcs = self._split_domain(domain)
 
@@ -81,8 +99,15 @@ class LdapServer:
                 if rc != 0:
                     raise Exception(f"Unable to add user. Make sure to run \"ldapadd -x -D cn=admin,{dcs} -W -f /etc/ldap/basedn.ldif\" first.")
     
-    def add_group(self, domain=None, gid=None, group=None, passwd=None):
-        """Add group."""
+    def add_group(self, domain=None, gid=None, group=None, passwd=None) -> None:
+        """Add group.
+
+        Args:
+        domain -- Domain name
+        gid -- Group id
+        group -- group name
+        passwd -- LDAP password
+        """
 
         dcs = self._split_domain(domain)
 
@@ -101,13 +126,13 @@ class LdapServer:
                 if rc != 0:
                     raise Exception(f"Unable to add group. Make sure to run \"ldapadd -x -D cn=admin,{dcs} -W -f /etc/ldap/basedn.ldif\" first.")
 
-    def disable(self):
+    def disable(self) -> None:
         """Disable services."""
 
         for name in self.systemd_services:
             systemd.service_pause(name)
 
-    def enable(self):
+    def enable(self) -> None:
         """Enable services."""
 
         for name in self.systemd_services:
@@ -123,7 +148,7 @@ class LdapServer:
             except:
                 raise Exception(f"failed to install package ({name})")
 
-    def is_enabled(self):
+    def is_enabled(self) -> bool:
         """Check enabled status of services."""
 
         if self.systemd_services:
@@ -133,7 +158,7 @@ class LdapServer:
 
         return True
 
-    def is_installed(self):
+    def is_installed(self) -> bool:
         """Check packages are installed."""
 
         if self.packages:
@@ -143,7 +168,7 @@ class LdapServer:
 
         return True
 
-    def is_running(self):
+    def is_running(self) -> bool:
         """Check running/active status of services."""
 
         if self.systemd_services:
@@ -153,14 +178,20 @@ class LdapServer:
 
         return True
 
-    def restart(self):
+    def restart(self) -> None:
         """Restart servers/services."""
 
         self.stop()
         self.start()
 
-    def set_config(self, domain=None, org=None, passwd=None):
-        """Set LDAP password and slapd configuration."""
+    def set_config(self, domain=None, org=None, passwd=None) -> None:
+        """Set LDAP password and slapd configuration.
+
+        Args:
+        domain -- Domain name
+        org -- Organization name
+        passwd -- LDAP password
+        """
 
         if domain and org and passwd:
             dcs = self._split_domain(domain)
@@ -171,20 +202,25 @@ class LdapServer:
         else:
             raise Exception("Domain, Organization, or Password is missing cannot complete action.")
 
-    def start(self):
+    def start(self) -> None:
         """Start services."""
 
         for name in self.systemd_services:
             systemd.service_start(name)
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop services."""
 
         for name in self.systemd_services:
             systemd.service_stop(name)
 
-    def tls_deb(self, domain, org, passwd):
-        """Configuration of slapd noninteractive."""
+    def tls_deb(self, domain, org, passwd) -> None:
+        """Configuration of slapd noninteractive.
+
+        domain -- Domain name
+        org -- Organization name
+        passwd -- LDAP password
+        """
 
         args = [
             "slapd slapd/no_configuration boolean false", f"slapd slapd/domain string {domain}",
@@ -206,8 +242,12 @@ class LdapServer:
         if rc != 0:
             raise Exception(f"Unable to set debconf for slapd.")
     
-    def tls_gen(self, org=None):
-        """Create CA cert."""
+    def tls_gen(self, org=None) -> None:
+        """Create CA cert.
+
+        Args:
+        org -- Organization name
+        """
 
         if org:
             # Create Private Key for Certificate Authority(CA)

@@ -23,19 +23,19 @@ class LdapClient:
     def __init__(self):
         pass
 
-    def disable(self):
+    def disable(self) -> None:
         """Disable services."""
 
         for name in self.systemd_services:
             systemd.service_pause(name)
 
-    def enable(self):
+    def enable(self) -> None:
         """Enable services."""
 
         for name in self.systemd_services:
             systemd.service_resume(name)
 
-    def install(self):
+    def install(self) -> None:
         """Install using charmlib apt"""
         if self.packages:
             try:
@@ -45,7 +45,7 @@ class LdapClient:
             except:
                 raise Exception(f"failed to install package ({name})")
 
-    def is_enabled(self):
+    def is_enabled(self) -> bool:
         """Check enabled status of services."""
 
         if self.systemd_services:
@@ -55,7 +55,7 @@ class LdapClient:
 
         return True
 
-    def is_installed(self):
+    def is_installed(self) -> bool:
         """Check packages are installed."""
 
         if self.packages:
@@ -65,7 +65,7 @@ class LdapClient:
 
         return True
 
-    def is_running(self):
+    def is_running(self) -> bool:
         """Check running/active status of services."""
 
         if self.systemd_services:
@@ -75,26 +75,31 @@ class LdapClient:
 
         return True
 
-    def restart(self):
+    def restart(self) -> None:
         """Restart servers/services."""
 
         self.stop()
         self.start()
 
-    def start(self):
+    def start(self) -> None:
         """Start services."""
 
         for name in self.systemd_services:
             systemd.service_start(name)
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop services."""
 
         for name in self.systemd_services:
             systemd.service_stop(name)
 
     def tls_save(self, ca_cert, sssd_conf):
-        """Save tls certificate and sssd conf."""
+        """Save tls certificate and sssd conf.
+
+        Args:
+        ca_cert -- CA certificate
+        sssd_conf -- SSSD configuration file
+        """
 
         fd = FileData(ca_cert)
         fd.save("/usr/local/share/ca-certificates/mycacert.crt")
