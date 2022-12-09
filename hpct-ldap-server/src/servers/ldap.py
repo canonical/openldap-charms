@@ -224,7 +224,7 @@ class LdapServer:
         """Check packages are installed."""
         if self.packages:
             for name in self.packages:
-                if not self.apt.DebianPackage.from_installed_package(name).present:
+                if not apt.DebianPackage.from_installed_package(name).present:
                     return False
 
         return True
