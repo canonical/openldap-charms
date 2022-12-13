@@ -52,6 +52,9 @@ class OpenldapServerCharm(CharmBase):
             return
         replicas = self.model.get_relation("replicas")
         domain = replicas.data[self.app].get("domain")
+        if not domain:
+            event.fail("Domain has not been set.")
+            return
         self.ldapserver_manager.add_group(
             event.params["admin-passwd"],
             domain,
@@ -116,10 +119,6 @@ class OpenldapServerCharm(CharmBase):
         # Get Replicas relation
         replicas = self.model.get_relation("replicas")
         domain = replicas.data[self.app].get("domain")
-        if not auth_relation:
-            self.unit.status = WaitingStatus("Waiting for ldap-tls relation to be created")
-            event.defer()
-            return
         if not domain:
             logger.info(f"domain: {domain}")
             self.unit.status = WaitingStatus("Waiting for set-config action to be run")

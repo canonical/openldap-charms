@@ -53,13 +53,14 @@ class OpenldapClientCharm(CharmBase):
     def _on_ldap_auth_relation_changed(self, event):
         """Handle ldap-auth relation changed event."""
         auth_relation = self.model.get_relation("ldap-auth")
-        if not auth_relation:
-            return
         ca_cert = auth_relation.data[event.app].get("ca-cert")
         sssd_conf = auth_relation.data[event.app].get("sssd-conf")
         if ca_cert and sssd_conf:
-            self.ldapclient_manager.tls_save(ca_cert, sssd_conf)
-
+            self.ldapclient_manager.save_ca_cert(ca_cert)
+            self.ldapclient_manager.save_sssd_conf(sssd_conf)
+            logger.info("ldap-auth relation-changed data found.")
+        else:
+            logger.info("ldap-auth relation-changed data not found: ca-cert and sssd-conf.")
 
 if __name__ == "__main__":  # pragma: nocover
     main(OpenldapClientCharm)

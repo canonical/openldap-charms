@@ -2,8 +2,8 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
-# servers/ldap.py
-"""Server for client operator."""
+# managers/ldap.py
+"""Manager for client operator."""
 import logging
 
 logger = logging.getLogger(__name__)
@@ -76,6 +76,36 @@ class OpenldapClientManager:
         self.stop()
         self.start()
 
+    def save_ca_cert(self, ca_cert):
+        """Save CA certificate.
+
+        Parameters
+        ----------
+        ca_cert : str
+            CA certificate.
+        """
+        fd = FileData(ca_cert)
+        fd.save("/usr/local/share/ca-certificates/mycacert.crt")
+
+        rc = subprocess.call(
+            ["update-ca-certificates"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
+        )
+        if rc != 0:
+            raise Exception("Unable to update ca certificates.")
+
+    def save_sssd_conf(self, sssd_conf):
+        """Save sssd conf.
+
+        Parameters
+        ----------
+        sssd_conf : str
+            SSSD configuration file.
+        """
+        fd = FileData(sssd_conf)
+        fd.save("/etc/sssd/sssd.conf", mode=0o600, owner="root", group="root")
+
+        systemd.service_restart("sssd")
+
     def start(self) -> None:
         """Start services."""
         for name in self.systemd_services:
@@ -85,26 +115,3 @@ class OpenldapClientManager:
         """Stop services."""
         for name in self.systemd_services:
             systemd.service_stop(name)
-
-    def tls_save(self, ca_cert, sssd_conf):
-        """Save tls certificate and sssd conf.
-
-        Parameters
-        ----------
-        ca_cert : str
-            CA certificate.
-        sssd_conf : str
-            SSSD configuration file.
-        """
-        fd = FileData(ca_cert)
-        fd.save("/usr/local/share/ca-certificates/mycacert.crt")
-        fd = FileData(sssd_conf)
-        fd.save("/etc/sssd/sssd.conf", mode=0o600, owner="root", group="root")
-
-        rc = subprocess.call(
-            ["update-ca-certificates"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
-        )
-        if rc != 0:
-            raise Exception("Unable to update ca certificates.")
-
-        systemd.service_restart("sssd")

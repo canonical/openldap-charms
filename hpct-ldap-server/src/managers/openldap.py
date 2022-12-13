@@ -1,8 +1,8 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
-# servers/ldap.py
-
+# managers/ldap.py
+"""Manager for server operator."""
 import logging
 import os
 import shutil
@@ -21,7 +21,7 @@ MIN_UID = 999
 
 
 class OpenldapServerManager:
-    """Server to provide LDAP server charm all functionality needed."""
+    """Manager to provide LDAP server charm all functionality needed."""
 
     packages = ["slapd", "ldap-utils", "sssd-ldap", "gnutls-bin", "ssl-cert"]
     systemd_services = ["slapd"]
@@ -65,20 +65,10 @@ class OpenldapServerManager:
 
         Parameters
         ----------
-        dcs : str
+        dc : str
             Domain components.
         """
-        if "." in dc:
-            split_dc = []
-            dcs = dc.split(".")
-            for d in dcs:
-                if len(d) < 1:
-                    raise Exception("Invalid domain components given, cannot be empty.")
-                else:
-                    split_dc.append(f"dc={d}")
-            return ",".join(split_dc)
-        else:
-            return f"dc={dc}"
+        return ",".join([f"dc={x}" for x in dc.split(".")])
 
     def add_user(
         self,
@@ -116,11 +106,11 @@ class OpenldapServerManager:
             Username.
         """
         dcs = self._split_domain(domain)
-
+        if uid < MIN_UID or gid < MIN_GID:
+            logger.error("uid and gid must be below {MIN_UID}.")
+            return
         if (
             None not in [admin_passwd, dcs, gecos, gid, homedir, shell, passwd, uid, user]
-            and uid > MIN_UID
-            and gid > MIN_GID
         ):
             binddn = f"cn=admin,{dcs}"
             base_user = [
@@ -172,7 +162,10 @@ class OpenldapServerManager:
         """
         dcs = self._split_domain(domain)
 
-        if None not in [domain, gid, group, admin_passwd] and gid > MIN_GID:
+        if gid < MIN_GID:
+            logger.error("gid must be below {MIN_GID}.")
+            return
+        if None not in [domain, gid, group, admin_passwd]:
             binddn = f"cn=admin,{dcs}"
             base_group = [
                 f"dn: cn={group},ou=Groups,{dcs}",
@@ -411,7 +404,7 @@ class OpenldapServerManager:
                 raise Exception("Unable to add CA certificate to trusted certs")
 
             # Get Server Hostname
-            result = subprocess.run(["cat", "/etc/hostname"], capture_output=True, text=True)
+            hostname = subprocess.run(["cat", "/etc/hostname"], capture_output=True, text=True).stdout.strip()
 
             # Private Key for Server
             pks_args = [
@@ -420,7 +413,7 @@ class OpenldapServerManager:
                 "--bits",
                 "2048",
                 "--outfile",
-                "/etc/ldap/ldap01_slapd_key.pem",
+                f"/etc/ldap/ldap-{hostname}_slapd_key.pem",
             ]
             rc = subprocess.call(pks_args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
@@ -430,14 +423,14 @@ class OpenldapServerManager:
             # Template for Server Certificate
             sc_template = [
                 f"organization = {org}",
-                f"cn = {result.stdout}",
+                f"cn = {hostname}",
                 "tls_www_server",
                 "encryption_key",
                 "signing_key",
                 "expiration_days = 365",
             ]
             sc_template = "\n".join(sc_template)
-            with open("/etc/ssl/ldap01.info", "w") as f:
+            with open(f"/etc/ssl/ldap-{hostname}.info", "w") as f:
                 f.write(f"{sc_template}")
 
             # Create Server Certificate
@@ -445,15 +438,15 @@ class OpenldapServerManager:
                 "certtool",
                 "--generate-certificate",
                 "--load-privkey",
-                "/etc/ldap/ldap01_slapd_key.pem",
+                f"/etc/ldap/ldap-{hostname}_slapd_key.pem",
                 "--load-ca-certificate",
                 "/etc/ssl/certs/mycacert.pem",
                 "--load-ca-privkey",
                 "/etc/ssl/private/mycakey.pem",
                 "--template",
-                "/etc/ssl/ldap01.info",
+                f"/etc/ssl/ldap-{hostname}.info",
                 "--outfile",
-                "/etc/ldap/ldap01_slapd_cert.pem",
+                f"/etc/ldap/ldap-{hostname}_slapd_cert.pem",
             ]
             rc = subprocess.call(sc_args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
@@ -461,8 +454,8 @@ class OpenldapServerManager:
                 raise Exception("Unable to create server certificate.")
 
             # Adjust Permissions and Ownership
-            shutil.chown("/etc/ldap/ldap01_slapd_key.pem", group="openldap")
-            os.chmod("/etc/ldap/ldap01_slapd_key.pem", 0o640)
+            shutil.chown(f"/etc/ldap/ldap-{hostname}_slapd_key.pem", group="openldap")
+            os.chmod(f"/etc/ldap/ldap-{hostname}_slapd_key.pem", 0o640)
 
             # Server Certificates LDIF
             sc_ldif = [
@@ -471,10 +464,10 @@ class OpenldapServerManager:
                 "olcTLSCACertificateFile: /etc/ssl/certs/mycacert.pem",
                 "-",
                 "add: olcTLSCertificateFile",
-                "olcTLSCertificateFile: /etc/ldap/ldap01_slapd_cert.pem",
+                f"olcTLSCertificateFile: /etc/ldap/ldap-{hostname}_slapd_cert.pem",
                 "-",
                 "add: olcTLSCertificateKeyFile",
-                "olcTLSCertificateKeyFile: /etc/ldap/ldap01_slapd_key.pem",
+                f"olcTLSCertificateKeyFile: /etc/ldap/ldap-{hostname}_slapd_key.pem",
             ]
             sc_ldif = "\n".join(sc_ldif)
             with open("/etc/ldap/certinfo.ldif", "w") as f:
