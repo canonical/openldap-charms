@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # Copyright 2022 Canonical
 # See LICENSE file for licensing details.
-"""HPCT LDAP CLIENT OPERATOR.
+"""OPENLDAP CLIENT OPERATOR.
 
 This operator provides an LDAP client that connects to the server with SSSD.
 
 Utilizes a requires relation to connect to the server.
 
 charmcraft -v pack
-juju deploy ./hpct-ldap-client-operator_ubuntu-20.04-amd64.charm -n <#-of-client-units>
+juju deploy ./hpct-openldap-client_ubuntu-22.04-amd64.charm -n <#-of-client-units>
 """
 
 import logging
@@ -17,12 +17,12 @@ from ops.charm import CharmBase
 from ops.main import main
 from ops.model import ActiveStatus, WaitingStatus
 
-from servers.ldap import LdapClient
+from managers.openldap import OpenldapClientManager
 
 logger = logging.getLogger(__name__)
 
 
-class LdapClientCharm(CharmBase):
+class OpenldapClientCharm(CharmBase):
     """HPC LDAP Client Charm."""
 
     def __init__(self, *args):
@@ -32,15 +32,17 @@ class LdapClientCharm(CharmBase):
         self.framework.observe(self.on.start, self._on_start)
         # Integrations
         self.framework.observe(
-            self.on.tls_cert_relation_changed, self._on_tls_cert_relation_changed
+            self.on.ldap_auth_relation_changed, self._on_ldap_auth_relation_changed
         )
-        # Server Manager
-        self.ldapclient_manager = LdapClient()
+        # Client Manager
+        self.ldapclient_manager = OpenldapClientManager()
 
     def _on_install(self, event):
         """Handle install event."""
         logger.info("Install")
         self.ldapclient_manager.install()
+        if not self.ldapclient_manager.is_installed():
+            logger.error("Install failed, required packages not found.")
 
     def _on_start(self, event):
         """Handle start event."""
@@ -48,18 +50,16 @@ class LdapClientCharm(CharmBase):
         self.ldapclient_manager.start()
         self.unit.status = ActiveStatus("LDAP Client Started")
 
-    def _on_tls_cert_relation_changed(self, event):
-        """Handle ldap-tls relation changed event."""
-        tls_relation = self.model.get_relation("tls-cert")
-        if not tls_relation:
-            self.unit.status = WaitingStatus("Waiting for ldap-tls relation to be created")
-            event.defer()
+    def _on_ldap_auth_relation_changed(self, event):
+        """Handle ldap-auth relation changed event."""
+        auth_relation = self.model.get_relation("ldap-auth")
+        if not auth_relation:
             return
-        ca_cert = tls_relation.data[event.app].get("ca")
-        sssd_conf = tls_relation.data[event.app].get("sssd")
+        ca_cert = auth_relation.data[event.app].get("ca-cert")
+        sssd_conf = auth_relation.data[event.app].get("sssd-conf")
         if ca_cert and sssd_conf:
             self.ldapclient_manager.tls_save(ca_cert, sssd_conf)
 
 
 if __name__ == "__main__":  # pragma: nocover
-    main(LdapClientCharm)
+    main(OpenldapClientCharm)

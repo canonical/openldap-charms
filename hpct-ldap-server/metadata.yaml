@@ -2,8 +2,8 @@
 
 # The charm package name, no spaces (required)
 # See https://juju.is/docs/sdk/naming#heading--naming-charms for guidance.
-name: hpct-ldap-server
-display-name: hpct-ldap-server
+name: openldap-server
+display-name: openldap-server
 description: OpenLDAP server operator for HPC operations.
 summary: This operator is responsible for the OpenLDAP server and replicas.
 
@@ -11,5 +11,5 @@ peers:
   replicas:
     interface: ldap-replicas
 provides:
-  tls-cert:
-    interface: ldap-tls
+  ldap-auth:
+    interface: ldap-auth

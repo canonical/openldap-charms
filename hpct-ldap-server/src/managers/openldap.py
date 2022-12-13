@@ -4,6 +4,8 @@
 # servers/ldap.py
 
 import logging
+import os
+import shutil
 import subprocess
 import tempfile
 
@@ -18,7 +20,7 @@ MIN_GID = 999
 MIN_UID = 999
 
 
-class LdapServer:
+class OpenldapServerManager:
     """Server to provide LDAP server charm all functionality needed."""
 
     packages = ["slapd", "ldap-utils", "sssd-ldap", "gnutls-bin", "ssl-cert"]
@@ -46,10 +48,10 @@ class LdapServer:
             "objectClass: organizationalUnit",
             "ou: Groups",
         ]
+        base = "\n".join(base)
 
         with open("/etc/ldap/basedn.ldif", "w") as f:
-            for line in base:
-                f.write(f"{line}\n")
+            f.write(f"{base}")
 
         binddn = f"cn=admin,{dcs}"
         cmd = ["ldapadd", "-x", "-D", binddn, "-w", admin_passwd, "-f", "/etc/ldap/basedn.ldif"]
@@ -85,7 +87,7 @@ class LdapServer:
         gecos=None,
         gid=None,
         homedir=None,
-        login=None,
+        shell=None,
         passwd=None,
         uid=None,
         user=None,
@@ -104,7 +106,7 @@ class LdapServer:
             Group id.
         homedir : str
             Home directory path.
-        login : str
+        shell : str
             Login shell.
         passwd : str
             User password.
@@ -116,7 +118,7 @@ class LdapServer:
         dcs = self._split_domain(domain)
 
         if (
-            None not in [admin_passwd, dcs, gecos, gid, homedir, login, passwd, uid, user]
+            None not in [admin_passwd, dcs, gecos, gid, homedir, shell, passwd, uid, user]
             and uid > MIN_UID
             and gid > MIN_GID
         ):
@@ -129,17 +131,17 @@ class LdapServer:
                 f"cn: {user.lower()}",
                 f"sn: {user}",
                 f"userPassword: {passwd}",
-                f"loginShell: {login}",
+                f"loginShell: {shell}",
                 f"uidNumber: {uid}",
                 f"gidNumber: {gid}",
                 f"homeDirectory: {homedir}",
                 f"gecos: {gecos}",
             ]
+            base_user = "\n".join(base_user)
 
             with tempfile.NamedTemporaryFile(mode="w+t", delete=True) as f:
-                for line in base_user:
-                    f.write(f"{line}\n")
-                    f.flush()
+                f.write(f"{base_user}")
+                f.flush()
                 cmd = ["ldapadd", "-x", "-D", binddn, "-w", admin_passwd, "-f", f.name]
 
                 rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -178,11 +180,11 @@ class LdapServer:
                 f"cn: {group}",
                 f"gidNumber: {gid}",
             ]
+            base_group = "\n".join(base_group)
 
             with tempfile.NamedTemporaryFile(mode="w+t", delete=True) as f:
-                for line in base_group:
-                    f.write(f"{line}\n")
-                    f.flush()
+                f.write(f"{base_group}")
+                f.flush()
                 cmd = ["ldapadd", "-x", "-D", binddn, "-w", admin_passwd, "-f", f.name]
 
                 rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -190,6 +192,66 @@ class LdapServer:
                     raise Exception(
                         f'Unable to add group. Make sure to run "ldapadd -x -D cn=admin,{dcs} -W -f /etc/ldap/basedn.ldif" first.'
                     )
+
+    def auth_load(self, domain=None):
+        """Load and return CA cert and sssd configuration.
+
+        Parameters
+        ----------
+        domain : str
+            Domain name.
+        """
+        if domain:
+            dcs = self._split_domain(domain)
+
+            # sssd conf template for clients
+            ldap_uri = subprocess.run(["cat", "/etc/hostname"], capture_output=True, text=True)
+            sssd_conf = [
+                "[sssd]",
+                "config_file_version = 2",
+                f"domains = {domain}",
+                "",
+                f"[domain/{domain}]",
+                "id_provider = ldap",
+                "auth_provider = ldap",
+                f"ldap_uri = ldap://{ldap_uri.stdout}",
+                "cache_credentials = True",
+                f"ldap_search_base = {dcs}",
+            ]
+            sssd_conf = "\n".join(sssd_conf)
+            with open("/etc/sssd/sssd_conf.template", "w") as f:
+                f.write(f"{sssd_conf}")
+
+            fd = FileData()
+            fd.load("/etc/sssd/sssd_conf.template")
+            sssd_conf = fd._dumps()
+            fd.load("/usr/local/share/ca-certificates/mycacert.crt")
+            ca_cert = fd._dumps()
+
+            return ca_cert, sssd_conf
+        else:
+            raise Exception("Domain has not been set. Run action set-config first.")
+
+    def configure(self, admin_passwd=None, domain=None, org=None) -> None:
+        """Set LDAP password and slapd configuration.
+
+        Parameters
+        ----------
+        admin_passwd : str
+            LDAP password.
+        domain : str
+            Domain name.
+        org : str
+            Organization name.
+        """
+        if domain and org and admin_passwd:
+            dcs = self._split_domain(domain)
+
+            # Reconfigure slapd with password
+            self.slapd_config(admin_passwd, domain, org)
+            self._add_base(admin_passwd, dcs)
+        else:
+            raise Exception("Domain, Organization, or Password is missing cannot complete action.")
 
     def disable(self) -> None:
         """Disable services."""
@@ -243,38 +305,7 @@ class LdapServer:
         self.stop()
         self.start()
 
-    def set_config(self, admin_passwd=None, domain=None, org=None) -> None:
-        """Set LDAP password and slapd configuration.
-
-        Parameters
-        ----------
-        admin_passwd : str
-            LDAP password.
-        domain : str
-            Domain name.
-        org : str
-            Organization name.
-        """
-        if domain and org and admin_passwd:
-            dcs = self._split_domain(domain)
-
-            # Reconfigure slapd with password
-            self.tls_deb(admin_passwd, domain, org)
-            self._add_base(admin_passwd, dcs)
-        else:
-            raise Exception("Domain, Organization, or Password is missing cannot complete action.")
-
-    def start(self) -> None:
-        """Start services."""
-        for name in self.systemd_services:
-            systemd.service_start(name)
-
-    def stop(self) -> None:
-        """Stop services."""
-        for name in self.systemd_services:
-            systemd.service_stop(name)
-
-    def tls_deb(self, admin_passwd, domain, org) -> None:
+    def slapd_config(self, admin_passwd, domain, org) -> None:
         """Configuration of slapd noninteractive.
 
         Parameters
@@ -295,11 +326,11 @@ class LdapServer:
             "slapd slapd/purge_database boolean true",
             "slapd slapd/move_old_database boolean true",
         ]
+        args = "\n".join(args)
 
         with tempfile.NamedTemporaryFile(mode="w+t", delete=True) as f:
-            for arg in args:
-                f.write(f"{arg}\n")
-                f.flush()
+            f.write(f"{args}")
+            f.flush()
 
             ps = subprocess.Popen(("cat", f"{f.name}"), stdout=subprocess.PIPE)
             output = subprocess.check_output(("debconf-set-selections"), stdin=ps.stdout)
@@ -312,6 +343,18 @@ class LdapServer:
         )
         if rc != 0:
             raise Exception(f"Unable to set debconf for slapd.")
+
+    def start(self) -> None:
+        """Start services."""
+        for name in self.systemd_services:
+            systemd.service_start(name)
+
+    def stop(self) -> None:
+        """Stop services."""
+        for name in self.systemd_services:
+            systemd.service_stop(name)
+
+    
 
     def tls_gen(self, org=None) -> None:
         """Create CA cert.
@@ -338,9 +381,9 @@ class LdapServer:
 
             # CA Template
             ca_template = [f"cn = {org}", "ca", "cert_signing_key", "expiration_days = 3650"]
+            ca_template = "\n".join(ca_template)
             with open("/etc/ssl/ca.info", "w") as f:
-                for line in ca_template:
-                    f.write(f"{line}\n")
+                f.write(f"{ca_template}")
 
             # Create CA Certificate
             ca_cert_args = [
@@ -393,9 +436,9 @@ class LdapServer:
                 "signing_key",
                 "expiration_days = 365",
             ]
+            sc_template = "\n".join(sc_template)
             with open("/etc/ssl/ldap01.info", "w") as f:
-                for line in sc_template:
-                    f.write(f"{line}\n")
+                f.write(f"{sc_template}")
 
             # Create Server Certificate
             sc_args = [
@@ -418,17 +461,8 @@ class LdapServer:
                 raise Exception("Unable to create server certificate.")
 
             # Adjust Permissions and Ownership
-            g_args = ["chgrp", "openldap", "/etc/ldap/ldap01_slapd_key.pem"]
-            rc = subprocess.call(g_args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
-            if rc != 0:
-                raise Exception("Unable to set group permissions.")
-
-            o_args = ["chmod", "0640", "/etc/ldap/ldap01_slapd_key.pem"]
-            rc = subprocess.call(o_args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
-            if rc != 0:
-                raise Exception("Unable to set owner permissions.")
+            shutil.chown("/etc/ldap/ldap01_slapd_key.pem", group="openldap")
+            os.chmod("/etc/ldap/ldap01_slapd_key.pem", 0o640)
 
             # Server Certificates LDIF
             sc_ldif = [
@@ -442,9 +476,9 @@ class LdapServer:
                 "add: olcTLSCertificateKeyFile",
                 "olcTLSCertificateKeyFile: /etc/ldap/ldap01_slapd_key.pem",
             ]
+            sc_ldif = "\n".join(sc_ldif)
             with open("/etc/ldap/certinfo.ldif", "w") as f:
-                for line in sc_ldif:
-                    f.write(f"{line}\n")
+                f.write(f"{sc_ldif}")
 
             # Apply Certificate LDIF
             ldif_args = [
@@ -462,42 +496,3 @@ class LdapServer:
                 raise Exception("Unable to apply Server Certificate LDIF")
         else:
             raise Exception("Organization not set.")
-
-    def tls_load(self, domain=None):
-        """Load and return CA cert and ldap uri.
-
-        Parameters
-        ----------
-        domain : str
-            Domain name.
-        """
-        if domain:
-            dcs = self._split_domain(domain)
-
-            # sssd conf template for clients
-            ldap_uri = subprocess.run(["cat", "/etc/hostname"], capture_output=True, text=True)
-            sssd_conf = [
-                "[sssd]",
-                "config_file_version = 2",
-                f"domains = {domain}",
-                "",
-                f"[domain/{domain}]",
-                "id_provider = ldap",
-                "auth_provider = ldap",
-                f"ldap_uri = ldap://{ldap_uri.stdout}",
-                "cache_credentials = True",
-                f"ldap_search_base = {dcs}",
-            ]
-            with open("/etc/sssd/sssd_conf.template", "w") as f:
-                for line in sssd_conf:
-                    f.write(f"{line}\n")
-
-            fd = FileData()
-            fd.load("/etc/sssd/sssd_conf.template")
-            sssd_conf = fd._dumps()
-            fd.load("/usr/local/share/ca-certificates/mycacert.crt")
-            ca_cert = fd._dumps()
-
-            return ca_cert, sssd_conf
-        else:
-            raise Exception("Domain has not been set. Run action set-config first.")

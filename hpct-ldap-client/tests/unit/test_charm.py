@@ -7,7 +7,7 @@ import ops.testing
 from ops.model import ActiveStatus
 from ops.testing import Harness
 
-from charm import HpctLdapClientCharm
+from charm import OpenldapClientCharm
 
 
 class TestCharm(unittest.TestCase):

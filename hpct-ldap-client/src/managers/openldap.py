@@ -15,8 +15,8 @@ from charms.operator_libs_linux.v1 import systemd
 from utils.filedata import FileData
 
 
-class LdapClient:
-    """Server to provide LDAP client charm all functionality needed."""
+class OpenldapClientManager:
+    """Manager to provide LDAP client charm all functionality needed."""
 
     packages = ["ldap-utils", "sssd-ldap"]
     systemd_services = ["sssd"]

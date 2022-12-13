@@ -8,7 +8,7 @@ Avoid using this README file for information that is maintained or published els
 Use links instead.
 -->
 
-# hpct-ldap-client
+# openldap-client
 
 Charmhub package name: operator-template
 More information: https://charmhub.io/hpct-ldap-client

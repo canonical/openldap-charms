@@ -2,11 +2,11 @@
 
 # The charm package name, no spaces (required)
 # See https://juju.is/docs/sdk/naming#heading--naming-charms for guidance.
-name: hpct-ldap-client
-display-name: hpct-ldap-client
+name: openldap-client
+display-name: openldap-client
 description: OpenLDAP client operator for HPC operations.
 summary: This operator is responsible for the OpenLDAP clients.
 
 requires:
-  tls-cert:
-    interface: ldap-tls
+  ldap-auth:
+    interface: ldap-auth

@@ -26,7 +26,7 @@ add-user:
     homedir:
       type: string
       description: Home directory path.
-    login:
+    shell:
       type: string
       description: Login shell.
     uid:
@@ -38,8 +38,8 @@ add-user:
     user:
       type: string
       description: Username.
-  required: [admin-passwd, gecos, gid, homedir, login, uid, passwd, user]
-set-config:
+  required: [admin-passwd, gecos, gid, homedir, shell, uid, passwd, user]
+configure:
   description: Set LDAP admin password and LDAP configuration.
   params:
     admin-passwd:
