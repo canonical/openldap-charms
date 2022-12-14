@@ -1,7 +1,3 @@
-# This file populates the Overview on Charmhub.
-
-# The charm package name, no spaces (required)
-# See https://juju.is/docs/sdk/naming#heading--naming-charms for guidance.
 name: openldap-client
 display-name: openldap-client
 description: OpenLDAP client operator for HPC operations.
