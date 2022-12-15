@@ -1,19 +1,6 @@
 #!/usr/bin/env python3
 # Copyright 2022 Canonical
 # See LICENSE file for licensing details.
-"""OPENLDAP SERVER OPERATOR.
-
-This operator provides directory services for all HPC-related operations as a service.
-
-Utilizes a peer relation for failover server units.
-Utilizes a provides relation for clients to connect to the server.
-
-charmcraft -v pack
-juju deploy ./openldap-server-operator_ubuntu-22.04-amd64.charm -n <#-of-failover-units>
-
-For more info see:
-https://hpc4can.ddns.net/xwiki/bin/view/Users/dvgomez/HPC%20LDAP%20Server%20and%20Client%20Operators/#
-"""
 
 import logging
 
@@ -55,12 +42,17 @@ class OpenldapServerCharm(CharmBase):
         if not domain:
             event.fail("Domain has not been set.")
             return
-        self.ldapserver_manager.add_group(
-            event.params["admin-passwd"],
-            domain,
-            event.params["gid"],
-            event.params["group"],
-        )
+        try:
+            self.ldapserver_manager.add_group(
+                event.params["admin-passwd"],
+                domain,
+                event.params["gid"],
+                event.params["group"],
+            )
+        except Exception as e:
+            event.fail(f"Failed to add group: {e}")
+            return
+        event.set_results({"result": "group added"})
 
     def _on_add_user_action(self, event):
         """Handle add-user action."""
@@ -69,35 +61,43 @@ class OpenldapServerCharm(CharmBase):
             return
         replicas = self.model.get_relation("replicas")
         domain = replicas.data[self.app].get("domain")
-        self.ldapserver_manager.add_user(
-            event.params["admin-passwd"],
-            domain,
-            event.params["gecos"],
-            event.params["gid"],
-            event.params["homedir"],
-            event.params["shell"],
-            event.params["passwd"],
-            event.params["uid"],
-            event.params["user"],
-        )
+        try:
+            self.ldapserver_manager.add_user(
+                event.params["admin-passwd"],
+                domain,
+                event.params["gecos"],
+                event.params["gid"],
+                event.params["homedir"],
+                event.params["shell"],
+                event.params["passwd"],
+                event.params["uid"],
+                event.params["user"],
+            )
+        except Exception as e:
+            event.fail(f"Failed to add user: {e}")
+            return
+        event.set_results({"result": "user added"})
 
     def _on_install(self, event):
         """Handle install event."""
         logger.info("Install")
-        self.ldapserver_manager.install()
         if not self.ldapserver_manager.is_installed():
-            logger.error("Install failed, required packages not found.")
+            self.ldapserver_manager.install()
 
     def _on_configure_action(self, event):
         """Handle set-config action."""
         if not self.unit.is_leader():
             event.fail("The action can be run only on leader unit.")
             return
-        self.ldapserver_manager.configure(
-            event.params["admin-passwd"],
-            event.params["domain"],
-            event.params["org"],
-        )
+        try:
+            self.ldapserver_manager.configure(
+                event.params["admin-passwd"],
+                event.params["domain"],
+                event.params["org"],
+            )
+        except Exception as e:
+            event.fail(f"Failed to set LDAP configuration: {e}")
+            return
         self.ldapserver_manager.tls_gen(event.params["org"])
         replicas = self.model.get_relation("replicas")
         replicas.data[self.app].update(
@@ -106,6 +106,7 @@ class OpenldapServerCharm(CharmBase):
                 "org": event.params["org"],
             }
         )
+        event.set_results({"result": "ldap configuration set"})
 
     def _on_start(self, event):
         """Handle start event."""
@@ -120,9 +121,8 @@ class OpenldapServerCharm(CharmBase):
         replicas = self.model.get_relation("replicas")
         domain = replicas.data[self.app].get("domain")
         if not domain:
-            logger.info(f"domain: {domain}")
+            event.fail("domain not set. run set-config action.")
             self.unit.status = WaitingStatus("Waiting for set-config action to be run")
-            event.defer()
             return
         ca_cert, sssd_conf = self.ldapserver_manager.auth_load(domain)
         auth_relation.data[self.app].update(

@@ -17,7 +17,7 @@ class TestCharm(unittest.TestCase):
         ops.testing.SIMULATE_CAN_CONNECT = True
         self.addCleanup(setattr, ops.testing, "SIMULATE_CAN_CONNECT", False)
 
-        self.harness = Harness(HpctLdapClientCharm)
+        self.harness = Harness(OpenldapClientCharm)
         self.addCleanup(self.harness.cleanup)
 
     def test_start(self):

@@ -57,9 +57,11 @@ class OpenldapClientManager:
         """Check packages are installed."""
         if self.packages:
             for name in self.packages:
-                if not apt.DebianPackage.from_installed_package(name).present:
+                try:
+                    if not apt.DebianPackage.from_installed_package(name).present:
+                        return False
+                except:
                     return False
-
         return True
 
     def is_running(self) -> bool:

@@ -1,21 +1,12 @@
 #!/usr/bin/env python3
 # Copyright 2022 Canonical
 # See LICENSE file for licensing details.
-"""OPENLDAP CLIENT OPERATOR.
-
-This operator provides an LDAP client that connects to the server with SSSD.
-
-Utilizes a requires relation to connect to the server.
-
-charmcraft -v pack
-juju deploy ./hpct-openldap-client_ubuntu-22.04-amd64.charm -n <#-of-client-units>
-"""
 
 import logging
 
 from ops.charm import CharmBase
 from ops.main import main
-from ops.model import ActiveStatus, WaitingStatus
+from ops.model import ActiveStatus
 
 from managers.openldap import OpenldapClientManager
 
@@ -40,9 +31,8 @@ class OpenldapClientCharm(CharmBase):
     def _on_install(self, event):
         """Handle install event."""
         logger.info("Install")
-        self.ldapclient_manager.install()
         if not self.ldapclient_manager.is_installed():
-            logger.error("Install failed, required packages not found.")
+            self.ldapclient_manager.install()
 
     def _on_start(self, event):
         """Handle start event."""
@@ -55,12 +45,15 @@ class OpenldapClientCharm(CharmBase):
         auth_relation = self.model.get_relation("ldap-auth")
         ca_cert = auth_relation.data[event.app].get("ca-cert")
         sssd_conf = auth_relation.data[event.app].get("sssd-conf")
-        if ca_cert and sssd_conf:
+        if None not in [ca_cert, sssd_conf]:
             self.ldapclient_manager.save_ca_cert(ca_cert)
             self.ldapclient_manager.save_sssd_conf(sssd_conf)
             logger.info("ldap-auth relation-changed data found.")
         else:
             logger.info("ldap-auth relation-changed data not found: ca-cert and sssd-conf.")
+        if not self.ldapclient_manager.is_running():
+            logger.error("Failed to start sssd")
+
 
 if __name__ == "__main__":  # pragma: nocover
     main(OpenldapClientCharm)
