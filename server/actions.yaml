@@ -1,0 +1,54 @@
+add-group:
+  description: Add LDAP group.
+  params:
+    admin-passwd:
+      type: string
+      description: LDAP Password.
+    gid:
+      type: integer
+      description: Group ID.
+    group:
+      type: string
+      description: Group name.
+  required: [admin-passwd, gid, group]
+add-user:
+  description: Add LDAP user.
+  params:
+    admin-passwd:
+      type: string
+      description: LDAP password.
+    gecos:
+      type: string
+      description: Real name.
+    gid:
+      type: integer
+      description: Group ID.
+    homedir:
+      type: string
+      description: Home directory path.
+    shell:
+      type: string
+      description: Login shell.
+    uid:
+      type: integer
+      description: User ID.
+    passwd:
+      type: string
+      description: User Password.
+    user:
+      type: string
+      description: Username.
+  required: [admin-passwd, gecos, gid, homedir, shell, uid, passwd, user]
+configure:
+  description: Set LDAP admin password and LDAP configuration.
+  params:
+    admin-passwd:
+      type: string
+      description: Password.
+    domain:
+      type: string
+      description: Domain Components in example.com format.
+    org:
+      type: string
+      description: Organization name.
+  required: [admin-passwd, domain, org]

@@ -1,0 +1,8 @@
+name: openldap-client
+display-name: openldap-client
+description: OpenLDAP client operator for HPC operations.
+summary: This operator is responsible for the OpenLDAP clients.
+
+requires:
+  ldap-auth:
+    interface: ldap-auth

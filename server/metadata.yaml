@@ -1,0 +1,11 @@
+name: openldap-server
+display-name: openldap-server
+description: OpenLDAP server operator for HPC operations.
+summary: This operator is responsible for the OpenLDAP server and replicas.
+
+peers:
+  replicas:
+    interface: ldap-replicas
+provides:
+  ldap-auth:
+    interface: ldap-auth
